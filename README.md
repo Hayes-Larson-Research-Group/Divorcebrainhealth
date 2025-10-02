@@ -8,3 +8,5 @@ Imaging analysis sex interaction.R - evaluates the interaction of sex in the ana
 
 Descriptives sensitivity subsample.R - creates descriptive tables but filters for complete cases on additional variables for childhood SES
 Imaging analyses sensitivity subsample.R - runs an additional regression model for MRI and PET outcomes including variables for childhood SES. Also includes sensitivity analyses for those over the age of 65 and those with a PET scan.
+
+DOI: 0.5281/zenodo.17253775
