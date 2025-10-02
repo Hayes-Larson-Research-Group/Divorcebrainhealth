@@ -1,0 +1,518 @@
+---
+title: "Imaging Analysis and Figures for Interaction and Sex Stratified"
+output: two figures, R data
+date: "2025-07-08"
+---
+
+
+```{r}
+library(tidyverse)
+library(mice)
+library(sandwich)
+library(broom)
+library(lmtest)
+```
+
+
+```{r}
+load(file = ".../divorce_completecases_petmri_v3.Rdata")
+```
+
+
+```{r}
+output_path <- "/.../"
+```
+
+
+
+```{r}
+data<-all_dat_final_df_complete
+data_over65 <- data %>% filter(age_at_mri>=65.00)
+```
+
+
+
+```{r}
+sum(data$W1_FEMALE == 1, na.rm = TRUE)
+```
+
+```{r}
+sum(data$W1_FEMALE == 0, na.rm = TRUE)
+```
+
+
+```{r}
+table(data$W1_FEMALE, data$W1_PREV_DIVORCE, exclude=NULL)
+```
+
+
+```{r}
+options(scipen=999)
+
+vols<-c("Cerebrum_tcb", "Total_hippo", 
+        "Total_gray", "Total_white", "Total_wmh", "Total_brain", 
+        "Frontal_Cortical", "Occipital_Cortical", "Parietal_Cortical", "Temporal_Cortical"
+)
+
+all_vol_outcomes<-c(paste0(vols, "_resid"), 
+                    paste0(vols, "_residblom"), 
+                    paste0(vols, "_residzscore"), 
+                    paste0(vols, "_residlog"), 
+                    "Total_wmh_log")
+
+
+all_expvars<-c("W1_PREV_DIVORCE") #/*MENTAL ILLNESS OF FAM MEMBER*/
+```
+
+
+```{r}
+models1<-expand_grid(all_expvars,all_vol_outcomes)
+models2<-expand_grid(all_expvars,vols) %>% rename(all_vol_outcomes=vols)
+models<-rbind(models1, models2)
+```
+
+
+
+
+
+```{r}
+# including a female*divorce interaction term
+
+MRI_analysis_interaction <- function(dat = NULL) {
+  
+  for (i in 1:nrow(models)) {
+
+    exposure <- rlang::parse_expr(models$all_expvars[i])
+    outcome  <- rlang::parse_expr(models$all_vol_outcomes[i])
+    
+
+    temp.model1 <- lm(eval(outcome) ~ eval(exposure) * W1_FEMALE, data = dat)
+    temp_model1 <- summary(temp.model1)
+    summary_model1_df <- as.data.frame(temp_model1$coefficients)
+    conf_int_model1 <- confint(temp.model1)
+    summary_df_bind_model1 <- cbind(summary_model1_df, conf_int_model1)
+    colnames(summary_df_bind_model1) <- c("Estimate", "Std Error", "T Value", "P value", "2.5 %", "97.5 %")
+    summary_df_bind_model1$Model <- "Model 1"
+    summary_df_bind_model1$Outcome <- models$all_vol_outcomes[i]
+    summary_df_bind_model1$Term <- rownames(summary_df_bind_model1)
+ 
+    summary_df_bind_model1$Term <- ifelse(summary_df_bind_model1$Term == "eval(exposure)", 
+                                          "Divorced", 
+                                          summary_df_bind_model1$Term)
+    temp.summ.model1 <- summary_df_bind_model1 %>% 
+      select("Term", "Model", "Outcome", "Estimate", "Std Error", "P value", "2.5 %", "97.5 %")
+    row.names(temp.summ.model1) <- NULL
+    
+
+    temp.model2 <- lm(eval(outcome) ~ eval(exposure) * W1_FEMALE + age_at_mri +
+                        W1_SOUTHERN_BIRTH + W1_D_RACE_SUMMARY + W1_PAR_SEPDIV + W1_EDU_YRS_CERT, data = dat)
+    temp_model2 <- summary(temp.model2)
+    summary_model2_df <- as.data.frame(temp_model2$coefficients)
+    conf_int_model2 <- confint(temp.model2)
+    summary_df_bind_model2 <- cbind(summary_model2_df, conf_int_model2)
+    colnames(summary_df_bind_model2) <- c("Estimate", "Std Error", "T Value", "P value", "2.5 %", "97.5 %")
+    summary_df_bind_model2$Model <- "Model 2"
+    summary_df_bind_model2$Outcome <- models$all_vol_outcomes[i]
+    summary_df_bind_model2$Term <- rownames(summary_df_bind_model2)
+    summary_df_bind_model2$Term <- ifelse(summary_df_bind_model2$Term == "eval(exposure)", 
+                                          "Divorced", 
+                                          summary_df_bind_model2$Term)
+
+    temp.summ.model2 <- summary_df_bind_model2 %>% 
+      select("Term", "Model", "Outcome", "Estimate", "Std Error", "P value", "2.5 %", "97.5 %")
+    row.names(temp.summ.model2) <- NULL
+    
+    if (i == 1) {
+      all_res <- rbind(temp.summ.model1, temp.summ.model2)
+    } else {
+      all_res <- rbind(all_res, temp.summ.model1, temp.summ.model2)
+    }
+    
+
+    if (models$all_vol_outcomes[i] %in% vols) {
+      temp.adjvol.model4 <- with(data = data,
+                                 lm(eval(outcome) ~ eval(exposure) * W1_FEMALE + Cerebrum_tcv))
+      temp_adjvol_model4 <- summary(temp.adjvol.model4)
+      summary_adjvol_model4_df <- as.data.frame(temp_adjvol_model4$coefficients)
+      conf_int_adjvol_model4 <- confint(temp.adjvol.model4)
+      summary_df_bind_adjvol_model4 <- cbind(summary_adjvol_model4_df, conf_int_adjvol_model4)
+      colnames(summary_df_bind_adjvol_model4) <- c("Estimate", "Std Error", "T Value", "P value", "2.5 %", "97.5 %")
+      summary_df_bind_adjvol_model4$Model <- "Model 4 Adjusted Vol Interaction"
+      summary_df_bind_adjvol_model4$Outcome <- models$all_vol_outcomes[i]
+      summary_df_bind_adjvol_model4$Term <- rownames(summary_df_bind_adjvol_model4)
+      summary_df_bind_adjvol_model4$Term <- ifelse(summary_df_bind_adjvol_model4$Term == "eval(exposure)", 
+                                                  "Divorced", 
+                                                  summary_df_bind_adjvol_model4$Term)
+      temp.summ.adjvol.model4 <- summary_df_bind_adjvol_model4 %>%
+        select("Term", "Model", "Outcome", "Estimate", "Std Error", "P value", "2.5 %", "97.5 %")
+      row.names(temp.summ.adjvol.model4) <- NULL
+      
+
+      temp.adjvol.model5 <- with(data = data,
+                                 lm(eval(outcome) ~ eval(exposure) * W1_FEMALE + age_at_mri +
+                                 W1_SOUTHERN_BIRTH + W1_D_RACE_SUMMARY + W1_PAR_SEPDIV + W1_EDU_YRS_CERT + Cerebrum_tcv))
+      temp_adjvol_model5 <- summary(temp.adjvol.model5)
+      summary_adjvol_model5_df <- as.data.frame(temp_adjvol_model5$coefficients)
+      conf_int_adjvol_model5 <- confint(temp.adjvol.model5)
+      summary_df_bind_adjvol_model5 <- cbind(summary_adjvol_model5_df, conf_int_adjvol_model5)
+      colnames(summary_df_bind_adjvol_model5) <- c("Estimate", "Std Error", "T Value", "P value", "2.5 %", "97.5 %")
+      summary_df_bind_adjvol_model5$Model <- "Model 5 Adjusted Vol Interaction"
+      summary_df_bind_adjvol_model5$Outcome <- models$all_vol_outcomes[i]
+      summary_df_bind_adjvol_model5$Term <- rownames(summary_df_bind_adjvol_model5)
+      summary_df_bind_adjvol_model5$Term <- ifelse(summary_df_bind_adjvol_model5$Term == "eval(exposure)", 
+                                                  "Divorced", 
+                                                  summary_df_bind_adjvol_model5$Term)
+      temp.summ.adjvol.model5 <- summary_df_bind_adjvol_model5 %>%
+        select("Term", "Model", "Outcome", "Estimate", "Std Error", "P value", "2.5 %", "97.5 %")
+      row.names(temp.summ.adjvol.model5) <- NULL
+      
+      all_res <- rbind(all_res, temp.summ.adjvol.model4, temp.summ.adjvol.model5)
+    }
+  }
+  
+  return(all_res)
+}
+
+
+all_res_mri_interaction<- MRI_analysis_interaction(dat = data)
+all_res_mri_over65_interaction <- MRI_analysis_interaction(dat = data_over65)
+
+```
+
+
+
+```{r}
+save(all_res_mri_interaction, file=".../all_res_mri_interaction_v3.Rdata")
+save(all_res_mri_over65_interaction, file=".../all_res_mri_over65_interaction_v3.Rdata")
+```
+
+
+
+```{r}
+#stratified by sex
+data_female <- subset(data, W1_FEMALE == 1)
+data_male<- subset(data, W1_FEMALE == 0)
+
+data_over65_female <- subset(data_over65, W1_FEMALE == 1)
+data_over65_male<- subset(data_over65, W1_FEMALE == 0)
+```
+
+
+
+
+
+```{r}
+MRI_analysis<-function(dat=NULL){
+  
+  for (i in 1:nrow(models)){
+    # i<-1
+    exposure<-rlang::parse_expr(models$all_expvars[i])
+    outcome<-rlang::parse_expr(models$all_vol_outcomes[i])
+ 
+    
+    temp.model1 <- lm(eval(outcome) ~ eval(exposure), data=dat)
+    temp_model1 <- summary(temp.model1)
+    temp_model1
+    
+    summary_model1_df <- as.data.frame(temp_model1$coefficients)
+    conf_int_model1 <- confint(temp.model1)
+    summary_df_bind_model1 <- cbind(summary_model1_df, conf_int_model1)
+    colnames(summary_df_bind_model1) <- c("Estimate", "Std Error", "T Value", "P value", "2.5 %", "97.5 %")
+    summary_df_bind_model1$Model <- "Model 1"
+    summary_df_bind_model1$Outcome <- models$all_vol_outcomes[i]
+    summary_df_bind_model1$Term <- rownames(summary_df_bind_model1)
+    summary_df_bind_model1$Term <- ifelse(summary_df_bind_model1$Term == "eval(exposure)", "Divorced", 
+                                          summary_df_bind_model1$Term)
+                                   
+    temp.summ.model1 <- summary_df_bind_model1 %>% 
+      select("Term", "Model", "Outcome", "Estimate", "Std Error", "P value", "2.5 %", "97.5 %") 
+    row.names(temp.summ.model1) <- NULL
+    
+    temp.model2 <- lm(eval(outcome) ~ eval(exposure)  + age_at_mri +
+                          W1_SOUTHERN_BIRTH + W1_D_RACE_SUMMARY + W1_PAR_SEPDIV + W1_EDU_YRS_CERT, data=dat)
+    
+    temp_model2 <- summary(temp.model2)
+    temp_model2
+    
+    summary_model2_df <- as.data.frame(temp_model2$coefficients)
+    conf_int_model2 <- confint(temp.model2)
+    summary_df_bind_model2 <- cbind(summary_model2_df, conf_int_model2)
+    colnames(summary_df_bind_model2) <- c("Estimate", "Std Error", "T Value", "P value", "2.5 %", "97.5 %")
+    summary_df_bind_model2$Model <- "Model 2"
+    summary_df_bind_model2$Outcome <- models$all_vol_outcomes[i]
+    summary_df_bind_model2$Term <- rownames(summary_df_bind_model2)
+    summary_df_bind_model2$Term <- ifelse(summary_df_bind_model2$Term == "eval(exposure)", "Divorced", 
+                                          summary_df_bind_model2$Term)
+    temp.summ.model2 <- summary_df_bind_model2 %>% 
+      select("Term", "Model", "Outcome", "Estimate", "Std Error", "P value", "2.5 %", "97.5 %") 
+    row.names(temp.summ.model2) <- NULL
+    
+    
+    if (i==1){all_res<-rbind(temp.summ.model1, temp.summ.model2)} else {
+      all_res<-rbind(all_res, temp.summ.model1, temp.summ.model2)
+    }
+    
+    if (models$all_vol_outcomes[i] %in% vols){
+
+      temp.adjvol.model4 <-with(data = data,
+                             lm(eval(outcome) ~ eval(exposure) + Cerebrum_tcv))
+
+      temp_adjvol_model4 <- summary(temp.adjvol.model4)
+      temp_adjvol_model4
+
+      summary_adjvol_model4_df <- as.data.frame(temp_adjvol_model4$coefficients)
+      conf_int_adjvol_model4 <- confint(temp.adjvol.model4)
+      summary_df_bind_adjvol_model4 <- cbind(summary_adjvol_model4_df, conf_int_adjvol_model4)
+      colnames(summary_df_bind_adjvol_model4) <- c("Estimate", "Std Error", "T Value", "P value", "2.5 %", "97.5 %")
+      summary_df_bind_adjvol_model4$Model <- "Model 4 Adjusted Vol"
+      summary_df_bind_adjvol_model4$Outcome <- models$all_vol_outcomes[i]
+      summary_df_bind_adjvol_model4$Term <- rownames(summary_df_bind_adjvol_model4)
+      summary_df_bind_adjvol_model4$Term <- ifelse(summary_df_bind_adjvol_model4$Term == "eval(exposure)", "Divorced",
+                                                   summary_df_bind_adjvol_model4$Term)
+
+      temp.summ.adjvol.model4 <- summary_df_bind_adjvol_model4 %>%
+        select("Term", "Model", "Outcome", "Estimate", "Std Error", "P value", "2.5 %", "97.5 %")
+      row.names(temp.summ.adjvol.model4) <- NULL
+
+      temp.adjvol.model5 <-with(data = data,
+                           lm(eval(outcome) ~ eval(exposure)  + age_at_mri + W1_SOUTHERN_BIRTH + 
+                                W1_D_RACE_SUMMARY + W1_PAR_SEPDIV + W1_EDU_YRS_CERT +
+                                Cerebrum_tcv))
+      temp_adjvol_model5 <- summary(temp.adjvol.model5)
+      temp_adjvol_model5
+
+      summary_adjvol_model5_df <- as.data.frame(temp_adjvol_model5$coefficients)
+      conf_int_adjvol_model5 <- confint(temp.adjvol.model5)
+      summary_df_bind_adjvol_model5 <- cbind(summary_adjvol_model5_df, conf_int_adjvol_model5)
+      colnames(summary_df_bind_adjvol_model5) <- c("Estimate", "Std Error", "T Value", "P value", "2.5 %", "97.5 %")
+      summary_df_bind_adjvol_model5$Model <- "Model 5 Adjusted Vol"
+      summary_df_bind_adjvol_model5$Outcome <- models$all_vol_outcomes[i]
+      summary_df_bind_adjvol_model5$Term <- rownames(summary_df_bind_adjvol_model5)
+      summary_df_bind_adjvol_model5$Term <- ifelse(summary_df_bind_adjvol_model5$Term == "eval(exposure)", "Divorced",
+                                                   summary_df_bind_adjvol_model5$Term)
+
+      temp.summ.adjvol.model5 <- summary_df_bind_adjvol_model5 %>%
+        select("Term", "Model", "Outcome", "Estimate", "Std Error", "P value", "2.5 %", "97.5 %")
+      row.names(temp.summ.adjvol.model5) <- NULL
+
+
+      all_res<-rbind(all_res, temp.summ.adjvol.model4, temp.summ.adjvol.model5)
+
+    }
+  }
+  return(all_res)
+  
+}
+
+all_res_mri_female<- MRI_analysis(dat = data_female)
+all_res_mri_male <- MRI_analysis(dat = data_male)
+all_res_mri_over65_female<- MRI_analysis(dat = data_over65_female)
+all_res_mri_over65_male<- MRI_analysis(dat = data_over65_male)
+```
+
+
+
+```{r}
+save(all_res_mri_female, file=".../all_res_mri_female_v3.Rdata")
+save(all_res_mri_male, file=".../all_res_mri_male_v3.Rdata")
+save(all_res_mri_over65_female, file=".../all_res_mri_over65_female_v3.Rdata")
+save(all_res_mri_over65_male, file=".../all_res_mri_over65_male_v3.Rdata")
+
+```
+
+
+
+
+```{r}
+clean <- function(data, digits = 3, mri = FALSE, pet = FALSE) {
+  
+  if (mri) {
+    data <- data %>% 
+      mutate(
+        outcome_raw = str_detect(Model, "Adjusted Vol"), 
+        outcome_label = case_when(
+          str_detect(Outcome, "Cerebrum_tcb") ~ "Total cerebrum volume", 
+          str_detect(Outcome, "Total_brain") ~ "Total brain volume", 
+          str_detect(Outcome, "Total_hippo") ~ "Hippocampal volume", 
+          str_detect(Outcome, "Total_gray") ~ "Total gray matter volume", 
+          str_detect(Outcome, "Total_white") ~ "Total white matter volume", 
+          str_detect(Outcome, "Total_wmh") ~ "Total cerebrum white matter hyperintensity volume", 
+          str_detect(Outcome, "Parietal_Cortical") ~ "Parietal lobe gray matter volume", 
+          str_detect(Outcome, "Temporal_Cortical") ~ "Temporal lobe gray matter volume", 
+          str_detect(Outcome, "Frontal_Cortical") ~ "Frontal lobe gray matter volume", 
+          str_detect(Outcome, "Occipital_Cortical") ~ "Occipital lobe gray matter volume",
+          TRUE ~ NA_character_
+        ) 
+        %>%
+          factor(levels = region_levels)
+      ) 
+  } 
+  
+  data <- data %>% 
+    rename(Lower = `2.5 %`, Upper = `97.5 %`)
+return(data)
+}
+```
+
+
+
+
+```{r}
+# order the regions here
+region_levels <- c(
+  "Total cerebrum volume",
+  "Total gray matter volume", 
+  "Total white matter volume", 
+  "Parietal lobe gray matter volume", 
+  "Temporal lobe gray matter volume", 
+  "Frontal lobe gray matter volume", 
+  "Occipital lobe gray matter volume",
+  "Hippocampal volume", 
+  "Total brain volume",
+  "Total cerebrum white matter hyperintensity volume"
+  )
+
+
+result_interaction <- clean(all_res_mri_interaction, mri = TRUE)
+result_over65_interaction <- clean(all_res_mri_over65_interaction, mri = TRUE)
+
+result_male <- clean(all_res_mri_male, mri = TRUE)
+result_female <- clean(all_res_mri_female, mri = TRUE)
+
+result_over65_male <- clean(all_res_mri_over65_male, mri = TRUE)
+result_over65_female <- clean(all_res_mri_over65_female, mri = TRUE)
+```
+
+
+```{r}
+# sensitivity analysis results ----
+
+## figure 1: alternative outcomes ----
+
+dodge_by <- 0.5
+barwidth <- 0.5
+
+
+### outcomes ending with _resid ----
+
+resid_results_male <- result_male %>%
+  filter(
+    Model == "Model 2",
+    Term == "Divorced",
+    str_detect(Outcome, "resid$"),
+    !str_detect(Outcome, "wmh")
+  )%>% mutate(sex = "Male")
+
+resid_results_female <- result_female %>%
+  filter(
+    Model == "Model 2",
+    Term == "Divorced",
+    str_detect(Outcome, "resid$"),
+    !str_detect(Outcome, "wmh")
+  )%>% mutate(sex = "Female")
+
+
+resid_results_combined <- rbind(resid_results_male, resid_results_female)
+```
+
+
+
+```{r}
+#plot
+resid_results_combined  %>% 
+  filter(outcome_label %in% region_levels[1:8]) %>% 
+  ggplot(aes(x = outcome_label, y = Estimate, 
+             color = sex, group = sex)) + 
+  geom_hline(yintercept = 0, color = "grey40") + 
+  geom_point(position = position_dodge(width = dodge_by)) + 
+  geom_errorbar(
+    aes(ymin = Lower, ymax = Upper), 
+    width = barwidth, 
+    position = position_dodge(width = dodge_by)
+  ) + 
+  scale_y_continuous(limits = c(-12, 12), breaks = seq(-12, 12, 2)) +
+  labs(x = "Brain region", y = "Residuals", color = "Model") + 
+  theme_bw() + 
+  theme(
+    plot.margin = margin(0.5, 0.5, 0.5, 1.5, unit = "cm"),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+  )
+
+ggsave(
+  paste0(output_path, "fig_mri_resid_male_female_v3.pdf"),
+  height = 5, width = 7, units = "in"
+)
+```
+
+
+
+
+
+
+
+```{r}
+
+dodge_by <- 0.5
+barwidth <- 0.5
+
+result_male2 <- result_male %>% 
+  filter(
+    Model == "Model 2",
+    Term == "Divorced", 
+    str_detect(Outcome, "residzscore"),
+    !str_detect(Outcome, "wmh")
+  ) %>% 
+  filter(outcome_label %in% region_levels[1:8])%>% mutate(sex = "Male")
+
+result_female2 <- result_female %>% 
+  filter(
+    Model == "Model 2",
+    Term == "Divorced", 
+    str_detect(Outcome, "residzscore"),
+    !str_detect(Outcome, "wmh")
+  ) %>% 
+  filter(outcome_label %in% region_levels[1:8])%>% mutate(sex = "Female")
+
+resid_results_combined2 <- rbind(result_male2, result_female2)
+
+```
+
+
+
+
+
+```{r}
+# plot 
+resid_results_combined2 %>% 
+  ggplot(aes(x = outcome_label, y = Estimate, 
+             color = sex, group = sex)) + 
+  geom_hline(yintercept = 0, color = "grey40") + 
+  geom_point(position = position_dodge(width = dodge_by)) + 
+  geom_errorbar(
+    aes(ymin = Lower, ymax = Upper), 
+    width = barwidth, 
+    position = position_dodge(width = dodge_by)
+  ) + 
+  labs(x = "Brain region", y = "Residuals z-scored", color = "Sex/Gender") + 
+  theme_bw() + 
+  theme(
+    plot.margin = margin(0.5, 0.5, 0.5, 1.5, unit = "cm"),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+  ) 
+
+
+ggsave(
+  paste0(output_path, "fig_mri_residualzscored_male_female_v3.pdf"),
+  height = 5, width = 7, units = "in"
+)
+```
+
+
+
+
+
+
+
+```{r}
+```
+
